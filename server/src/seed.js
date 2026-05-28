@@ -3,7 +3,7 @@ import { Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, E
 dotenv.config();
 if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required before running the seed script.');
 const d = (days) => new Date(Date.now() - days*86400000);
-await mongoose.connect(process.env.MONGO_URI);
+await mongoose.connect(process.env.MONGO_URI, { dbName: process.env.MONGO_DB_NAME || 'dairytrack_pro' });
 await Promise.all([Farm.deleteMany({}),User.deleteMany({}),Cow.deleteMany({}),MilkRecord.deleteMany({}),HealthRecord.deleteMany({}),PregnancyRecord.deleteMany({}),FeedItem.deleteMany({}),Expense.deleteMany({}),SaleRecord.deleteMany({}),Reminder.deleteMany({})]);
 const farm = await Farm.create({ name:'Greenfield Dairy Farm', ownerName:'Ken Rodgers', phone:'+254700000000', location:'Nairobi, Kenya', defaultMilkPrice:50 });
 const hash = await bcrypt.hash('password123',12);

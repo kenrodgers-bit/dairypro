@@ -227,16 +227,22 @@ function Protected({ children }) {
 
 function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('owner@dairytrack.com');
-  const [password, setPassword] = useState('password123');
+  const [mode, setMode] = useState('login');
+  const [name, setName] = useState('');
+  const [farmName, setFarmName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
 
-  async function login(event) {
+  const isRegistering = mode === 'register';
+
+  async function submitAuth(event) {
     event.preventDefault();
     setErr('');
 
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const payload = isRegistering ? { name, farmName, email, password } : { email, password };
+      const response = await api.post(isRegistering ? '/auth/register' : '/auth/login', payload);
       if (!response.data?.token) throw new Error('Login did not return an auth token. Check the API URL.');
       localStorage.setItem('dt_token', response.data.token);
       navigate('/');
@@ -261,17 +267,36 @@ function Login() {
           </p>
         </div>
       </div>
-      <form onSubmit={login} className="p-8 flex items-center justify-center">
+      <form onSubmit={submitAuth} className="p-8 flex items-center justify-center">
         <div className="card w-full max-w-md">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black">Sign in</h2>
-              <p className="text-slate-500 mb-6">Use seeded demo credentials after running server seed.</p>
+              <h2 className="text-2xl font-black">{isRegistering ? 'Create farm account' : 'Sign in'}</h2>
+              <p className="text-slate-500 mb-6">
+                {isRegistering ? 'Create the first owner account for this farm system.' : 'Use your farm account credentials.'}
+              </p>
             </div>
             <InstallAppButton className="shrink-0" />
           </div>
           <OfflineNotice />
           {err && <p className="bg-red-50 text-red-700 p-3 rounded-xl mb-3">{err}</p>}
+          {isRegistering && (
+            <>
+              <label className="label" htmlFor="name">
+                Owner name
+              </label>
+              <input id="name" className="input mb-3" value={name} onChange={(event) => setName(event.target.value)} />
+              <label className="label" htmlFor="farmName">
+                Farm name
+              </label>
+              <input
+                id="farmName"
+                className="input mb-3"
+                value={farmName}
+                onChange={(event) => setFarmName(event.target.value)}
+              />
+            </>
+          )}
           <label className="label" htmlFor="email">
             Email
           </label>
@@ -286,7 +311,17 @@ function Login() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <button className="btn-primary w-full">Login</button>
+          <button className="btn-primary w-full">{isRegistering ? 'Create account' : 'Login'}</button>
+          <button
+            type="button"
+            className="mt-4 w-full text-sm font-semibold text-emerald-700 hover:text-emerald-800"
+            onClick={() => {
+              setErr('');
+              setMode(isRegistering ? 'login' : 'register');
+            }}
+          >
+            {isRegistering ? 'I already have an account' : 'Create the first farm account'}
+          </button>
         </div>
       </form>
     </div>
