@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { FormSubmission, FormTemplate, User } from './models.js';
 import { auth, permit, wrap } from './middleware.js';
+import { writeAuditLog } from './audit.js';
 
 export const formTemplatesRouter = Router();
 
@@ -61,6 +62,14 @@ formTemplatesRouter.post(
       createdBy: req.user._id,
       fields: sortFields(req.body.fields || []),
     });
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.template.created',
+      entityType: 'FormTemplate',
+      entityId: template._id,
+      summary: `Created form template ${template.name}`,
+      metadata: { category: template.category, fieldCount: template.fields?.length || 0 },
+    });
     res.status(201).json(template);
   }),
 );
@@ -100,6 +109,14 @@ formTemplatesRouter.put(
       { new: true, runValidators: true },
     );
     if (!template) return res.status(404).json({ error: 'Form template not found' });
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.template.updated',
+      entityType: 'FormTemplate',
+      entityId: template._id,
+      summary: `Updated form template ${template.name}`,
+      metadata: { category: template.category, fieldCount: template.fields?.length || 0 },
+    });
     res.json(template);
   }),
 );
@@ -113,6 +130,14 @@ formTemplatesRouter.patch(
     if (!template) return res.status(404).json({ error: 'Form template not found' });
     template.isActive = !template.isActive;
     await template.save();
+    await writeAuditLog({
+      user: req.user,
+      action: template.isActive ? 'form.template.activated' : 'form.template.deactivated',
+      entityType: 'FormTemplate',
+      entityId: template._id,
+      summary: `${template.isActive ? 'Activated' : 'Deactivated'} form template ${template.name}`,
+      metadata: { isActive: template.isActive },
+    });
     res.json(template);
   }),
 );
@@ -138,6 +163,14 @@ formTemplatesRouter.post(
       { new: true },
     );
     if (!template) return res.status(404).json({ error: 'Form template not found' });
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.template.printed',
+      entityType: 'FormTemplate',
+      entityId: template._id,
+      summary: `Printed ${copies} copies of ${template.name}`,
+      metadata: { copies, notes: req.body.notes },
+    });
     res.status(201).json({ ok: true, printHistory: template.printHistory });
   }),
 );
@@ -162,6 +195,14 @@ formTemplatesRouter.delete(
     if (count) return res.status(409).json({ error: 'Cannot delete a template with existing submissions', count });
 
     await FormTemplate.deleteOne({ _id: req.params.id, farmId: req.user.farm });
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.template.deleted',
+      entityType: 'FormTemplate',
+      entityId: req.params.id,
+      summary: 'Deleted form template',
+      metadata: { templateId: req.params.id },
+    });
     res.json({ ok: true });
   }),
 );

@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { router } from './routes.js';
 import { formTemplatesRouter } from './formTemplatesRoutes.js';
 import { formSubmissionsRouter } from './formSubmissionsRoutes.js';
+import { auditRouter } from './auditRoutes.js';
+import { userRouter } from './userRoutes.js';
 import { errorHandler } from './middleware.js';
 
 dotenv.config();
@@ -64,6 +66,8 @@ app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: aut
 app.get('/health', (_, res) => res.json({ ok: true, name: 'DairyTrack Pro API' }));
 app.use('/api/form-templates', ensureDatabase, formTemplatesRouter);
 app.use('/api/form-submissions', ensureDatabase, formSubmissionsRouter);
+app.use('/api/audit-logs', ensureDatabase, auditRouter);
+app.use('/api/users', ensureDatabase, userRouter);
 app.use('/api', ensureDatabase, router);
 
 if (fs.existsSync(clientDist)) {

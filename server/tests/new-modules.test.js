@@ -50,6 +50,7 @@ const models = {
   FormTemplate: createMockModel([{ _id: 'template1', name: 'Morning Milk Collection', category: 'milk', isActive: true, fields: [] }]),
   FormSubmission: createMockModel([{ _id: 'submission1', templateId: 'template1', templateName: 'Morning Milk Collection', category: 'milk', status: 'submitted' }]),
   DailyReport: createMockModel([{ _id: 'report1', reportDate: new Date('2026-01-10'), activitiesCompleted: 'Checked herd' }]),
+  AuditLog: createMockModel([]),
 };
 
 models.FormTemplate.countDocuments = jest.fn(() => Promise.resolve(0));

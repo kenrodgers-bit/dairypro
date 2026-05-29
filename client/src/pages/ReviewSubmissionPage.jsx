@@ -34,6 +34,7 @@ export default function ReviewSubmissionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [auditLogs, setAuditLogs] = useState([]);
 
   const canReview = managerRoles.includes(user?.role);
   const template = submission?.templateId;
@@ -46,6 +47,10 @@ export default function ReviewSubmissionPage() {
       setUser(meResponse.data);
       setSubmission(submissionResponse.data);
       setReviewNotes(submissionResponse.data.reviewNotes || '');
+      if (managerRoles.includes(meResponse.data?.role)) {
+        const auditResponse = await api.get(`/audit-logs?entityType=FormSubmission&entityId=${submissionId}&limit=20`);
+        setAuditLogs(auditResponse.data || []);
+      }
     } catch (requestError) {
       setError(getError(requestError));
     } finally {
@@ -62,6 +67,8 @@ export default function ReviewSubmissionPage() {
       const response = await api.patch(`/form-submissions/${submissionId}/review`, { action, reviewNotes });
       setSubmission(response.data);
       setToast(action === 'approve' ? 'Submission approved' : action === 'reject' ? 'Submission rejected' : 'Submission re-opened');
+      const auditResponse = await api.get(`/audit-logs?entityType=FormSubmission&entityId=${submissionId}&limit=20`);
+      setAuditLogs(auditResponse.data || []);
     } catch (requestError) {
       setToast(getError(requestError));
     }
@@ -72,6 +79,8 @@ export default function ReviewSubmissionPage() {
       const response = await api.post(`/form-submissions/${submissionId}/transfer`);
       setSubmission(response.data);
       setToast('Transferred to system records');
+      const auditResponse = await api.get(`/audit-logs?entityType=FormSubmission&entityId=${submissionId}&limit=20`);
+      setAuditLogs(auditResponse.data || []);
     } catch (requestError) {
       setToast(getError(requestError));
     }
@@ -168,6 +177,21 @@ export default function ReviewSubmissionPage() {
                   </Link>
                 </div>
               )}
+
+              <div className="mt-6 border-t pt-4">
+                <h3 className="font-black">Audit trail</h3>
+                <div className="mt-3 space-y-3">
+                  {auditLogs.map((log) => (
+                    <div key={log._id} className="rounded-xl bg-slate-50 p-3 text-sm">
+                      <p className="font-bold">{log.summary}</p>
+                      <p className="text-xs text-slate-500">
+                        {log.actor?.name || 'System'} - {log.createdAt ? new Date(log.createdAt).toLocaleString() : ''}
+                      </p>
+                    </div>
+                  ))}
+                  {!auditLogs.length && <p className="text-sm text-slate-500">No audit events recorded yet.</p>}
+                </div>
+              </div>
             </>
           ) : (
             <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">This is a read-only view. Managers and owners review and transfer submissions.</div>

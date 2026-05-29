@@ -318,3 +318,13 @@ export const DailyReport = createModel('DailyReport', {
   submissionId: ref('FormSubmission'),
   submittedBy: ref('User'),
 });
+
+export const AuditLog = createModel('AuditLog', {
+  farm: ref('Farm', { required: true, index: true }),
+  actor: ref('User', { index: true }),
+  action: text({ required: true, index: true }),
+  entityType: text({ required: true, index: true }),
+  entityId: text({ required: true, index: true }),
+  summary: text({ required: true }),
+  metadata: { type: Schema.Types.Mixed, default: {} },
+});

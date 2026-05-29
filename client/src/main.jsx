@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { Suspense, createContext, lazy, useCallback, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -17,26 +17,29 @@ import {
   Search,
   ShieldCheck,
   Sprout,
+  Users,
   WifiOff,
 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, litres, money } from './api';
 import ConfirmModal from './components/ConfirmModal';
 import DatePicker from './components/DatePicker';
 import EmptyState from './components/EmptyState';
 import Toast from './components/Toast';
 import OfflineDraftSync from './components/OfflineDraftSync';
-import FeedInventoryPage from './pages/FeedInventoryPage';
-import FinancialReportPage from './pages/FinancialReportPage';
-import FillFormPage from './pages/FillFormPage';
-import FormsPage from './pages/FormsPage';
-import MilkQualityPage from './pages/MilkQualityPage';
-import ManageTemplatesPage from './pages/ManageTemplatesPage';
-import PrintFormPage from './pages/PrintFormPage';
-import ReviewSubmissionPage from './pages/ReviewSubmissionPage';
-import TasksPage from './pages/TasksPage';
-import VaccinationsPage from './pages/VaccinationsPage';
 import './index.css';
+
+const FeedInventoryPage = lazy(() => import('./pages/FeedInventoryPage'));
+const DashboardMilkChart = lazy(() => import('./components/DashboardMilkChart'));
+const FinancialReportPage = lazy(() => import('./pages/FinancialReportPage'));
+const FillFormPage = lazy(() => import('./pages/FillFormPage'));
+const FormsPage = lazy(() => import('./pages/FormsPage'));
+const ManageTemplatesPage = lazy(() => import('./pages/ManageTemplatesPage'));
+const MilkQualityPage = lazy(() => import('./pages/MilkQualityPage'));
+const PrintFormPage = lazy(() => import('./pages/PrintFormPage'));
+const ReviewSubmissionPage = lazy(() => import('./pages/ReviewSubmissionPage'));
+const TasksPage = lazy(() => import('./pages/TasksPage'));
+const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
+const VaccinationsPage = lazy(() => import('./pages/VaccinationsPage'));
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: BarChart3, roles: ['owner', 'manager'] },
@@ -54,6 +57,7 @@ const nav = [
   { to: '/sales', label: 'Sales', icon: ClipboardList, roles: ['owner', 'manager'] },
   { to: '/reports', label: 'Reports', icon: FileDown, roles: ['owner', 'manager'] },
   { to: '/reports/financial', label: 'Financial P&L', icon: BarChart3, roles: ['owner', 'manager'] },
+  { to: '/users', label: 'Users', icon: Users, roles: ['owner', 'manager'] },
 ];
 
 const UserContext = createContext(null);
@@ -445,15 +449,9 @@ function Dashboard() {
       <div className="grid xl:grid-cols-3 gap-4">
         <div className="card xl:col-span-2">
           <h3 className="font-black mb-4">Top producing cows this month</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={summary.topCows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="litres" fill="#16a34a" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<div className="h-[280px] animate-pulse rounded-xl bg-slate-100" />}>
+            <DashboardMilkChart data={summary.topCows} />
+          </Suspense>
         </div>
         <div className="card">
           <h3 className="font-black mb-4">Alerts</h3>
@@ -897,11 +895,16 @@ function RoleGate({ roles, children }) {
   return children;
 }
 
+function PageFallback() {
+  return <div className="card animate-pulse text-slate-500">Loading page...</div>;
+}
+
 function App() {
   return (
     <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
         <Route
           path="/"
           element={
@@ -1164,7 +1167,18 @@ function App() {
             </Protected>
           }
         />
-      </Routes>
+          <Route
+            path="/users"
+            element={
+              <Protected>
+                <RoleGate roles={['owner', 'manager']}>
+                  <UserManagementPage />
+                </RoleGate>
+              </Protected>
+            }
+          />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

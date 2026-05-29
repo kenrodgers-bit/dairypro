@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { FormSubmission, FormTemplate } from './models.js';
 import { auth, permit, wrap } from './middleware.js';
 import { transferSubmissionToCore, TransferError } from './fieldFormTransfer.js';
+import { writeAuditLog } from './audit.js';
 
 export const formSubmissionsRouter = Router();
 
@@ -124,6 +125,14 @@ formSubmissionsRouter.post(
       deviceInfo: req.body.deviceInfo || req.get('user-agent') || '',
     });
 
+    await writeAuditLog({
+      user: req.user,
+      action: status === 'submitted' ? 'form.submission.submitted' : 'form.submission.drafted',
+      entityType: 'FormSubmission',
+      entityId: submission._id,
+      summary: `${status === 'submitted' ? 'Submitted' : 'Saved draft for'} ${template.name}`,
+      metadata: { status, category: template.category, isManualEntry: Boolean(req.body.isManualEntry), isOfflineDraft: Boolean(req.body.isOfflineDraft) },
+    });
     res.status(201).json(submission);
   }),
 );
@@ -153,6 +162,14 @@ formSubmissionsRouter.patch(
 
     submission.status = 'submitted';
     await submission.save();
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.submission.submitted',
+      entityType: 'FormSubmission',
+      entityId: submission._id,
+      summary: `Submitted draft ${submission.templateName}`,
+      metadata: { status: submission.status, category: submission.category },
+    });
     res.json(submission);
   }),
 );
@@ -183,6 +200,14 @@ formSubmissionsRouter.patch(
     submission.reviewedBy = req.user._id;
     submission.reviewedAt = new Date();
     await submission.save();
+    await writeAuditLog({
+      user: req.user,
+      action: req.body.action === 'reopen' ? 'form.submission.reopened' : `form.submission.${submission.status}`,
+      entityType: 'FormSubmission',
+      entityId: submission._id,
+      summary: `${submission.status === 'approved' ? 'Approved' : submission.status === 'rejected' ? 'Rejected' : 'Re-opened'} ${submission.templateName}`,
+      metadata: { status: submission.status, reviewNotes: req.body.reviewNotes },
+    });
     res.json(submission);
   }),
 );
@@ -204,6 +229,14 @@ formSubmissionsRouter.post(
       submission.transferredRecordId = String(record._id);
       submission.transferredCollection = collection;
       await submission.save();
+      await writeAuditLog({
+        user: req.user,
+        action: 'form.submission.transferred',
+        entityType: 'FormSubmission',
+        entityId: submission._id,
+        summary: `Transferred ${submission.templateName} to ${collection}`,
+        metadata: { transferredRecordId: submission.transferredRecordId, transferredCollection: collection },
+      });
       res.json(submission);
     } catch (error) {
       if (error instanceof TransferError) {
@@ -228,6 +261,14 @@ formSubmissionsRouter.delete(
     }
 
     await FormSubmission.deleteOne({ _id: submission._id });
+    await writeAuditLog({
+      user: req.user,
+      action: 'form.submission.deleted',
+      entityType: 'FormSubmission',
+      entityId: submission._id,
+      summary: `Deleted ${submission.status} submission ${submission.templateName}`,
+      metadata: { status: submission.status, category: submission.category },
+    });
     res.json({ ok: true });
   }),
 );
