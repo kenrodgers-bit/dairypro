@@ -13,6 +13,19 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,webmanifest}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
+        runtimeCaching: [
+          {
+            urlPattern: /\/api\/form-templates(?:[/?].*)?$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'dairytrack-form-templates',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
     }),
   ],

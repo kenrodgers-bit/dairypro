@@ -17,10 +17,13 @@ import {
   FeedInventory,
   FeedConsumption,
   Task,
+  FormSubmission,
+  FormTemplate,
 } from './models.js';
 import { auth, permit, signToken, wrap } from './middleware.js';
 import { calculateCowValueScore } from './cowValue.js';
 import { dashboardCache, getDashboardCacheKey, invalidateDashboardCache } from './cache.js';
+import { buildDefaultFormTemplates } from './defaultFormTemplates.js';
 
 export const router = Router();
 
@@ -161,6 +164,9 @@ router.post(
       role: 'owner',
       farm: farm._id,
     });
+    if (await FormTemplate.countDocuments({ farmId: farm._id }) === 0) {
+      await FormTemplate.insertMany(buildDefaultFormTemplates({ farmId: farm._id, createdBy: user._id }));
+    }
 
     res.status(201).json({
       token: signToken(user),
@@ -207,8 +213,8 @@ crud('/cows', Cow, {
 });
 crud('/milk', MilkRecord, {
   readRoles: workerReadRoles,
-  createRoles: workerReadRoles,
-  updateRoles: workerReadRoles,
+  createRoles: managerRoles,
+  updateRoles: managerRoles,
   filter: ownMilkFilter,
   stampCreatedBy: true,
   afterCreate: (_, req) => invalidateDashboardCache(req.user.farm),
@@ -273,7 +279,7 @@ router.get(
 router.get(
   '/dashboard/summary',
   auth,
-  permit(...managerRoles),
+  permit(...workerReadRoles),
   wrap(async (req, res) => {
     const cacheKey = getDashboardCacheKey(req);
     const cached = dashboardCache.get(cacheKey);
@@ -285,7 +291,22 @@ router.get(
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const todayStart = new Date(now.toDateString());
     const sevenDays = new Date(now.getTime() + 7 * 86400000);
-    const [cows, milk, expenses, feed, sales, reminders, vaccinationsDue, highScc, lowInventory, overdueTasks] =
+    if (isWorker(req)) {
+      const recentSubmissions = await FormSubmission.find({ farmId: farm, submittedBy: req.user._id }).sort({ createdAt: -1 }).limit(5);
+      const draftForms = await FormSubmission.countDocuments({ farmId: farm, submittedBy: req.user._id, status: 'draft' });
+      const payload = {
+        stats: { totalCows: 0, milking: 0, pregnant: 0, sick: 0, sold: 0, todayMilk: 0, monthMilk: 0, milkIncome: 0, monthExpenses: 0, profit: 0, lowFeed: 0 },
+        topCows: [],
+        lowFeed: [],
+        reminders: [],
+        recentSales: [],
+        forms: { drafts: draftForms, pendingReview: 0, recentSubmissions },
+      };
+      dashboardCache.set(cacheKey, payload);
+      return res.json(payload);
+    }
+
+    const [cows, milk, expenses, feed, sales, reminders, vaccinationsDue, highScc, lowInventory, overdueTasks, pendingReview, approvedForms, recentFormSubmissions] =
       await Promise.all([
         Cow.find({ farm }),
         MilkRecord.find({ farm, date: { $gte: monthStart } }).populate('cow', 'name'),
@@ -300,6 +321,9 @@ router.get(
         MilkQuality.find({ farm, scc: { $gt: 200000 } }).populate('cowId', cowPopulate).sort({ testDate: -1 }).limit(10),
         FeedInventory.find({ farm, $expr: { $lt: ['$stockKg', '$lowStockThresholdKg'] } }).sort({ stockKg: 1 }).limit(10),
         Task.find({ farm, dueDate: { $lt: now }, status: { $ne: 'complete' } }).populate('assignedTo', 'name role').limit(10),
+        FormSubmission.countDocuments({ farmId: farm, status: 'submitted' }),
+        FormSubmission.countDocuments({ farmId: farm, status: 'approved' }),
+        FormSubmission.find({ farmId: farm, status: { $in: ['submitted', 'approved', 'rejected'] } }).populate('submittedBy', 'name role').sort({ createdAt: -1 }).limit(5),
       ]);
 
     const todayMilk = milk.filter((m) => new Date(m.date) >= todayStart).reduce((sum, m) => sum + totalMilk(m), 0);
@@ -336,6 +360,8 @@ router.get(
         vaccinationsDue: vaccinationsDue.length,
         highScc: highScc.length,
         overdueTasks: overdueTasks.length,
+        pendingReview,
+        approvedForms,
       },
       topCows,
       lowFeed,
@@ -345,6 +371,7 @@ router.get(
       highScc: highScc.map(withHighRisk),
       lowInventory,
       overdueTasks,
+      forms: { pendingReview, approvedForms, recentSubmissions: recentFormSubmissions },
     };
 
     dashboardCache.set(cacheKey, payload);

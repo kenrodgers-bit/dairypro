@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 function queryResult(value) {
   const query = {
     populate: jest.fn(() => query),
+    select: jest.fn(() => query),
     sort: jest.fn(() => query),
     limit: jest.fn(() => query),
     setOptions: jest.fn(() => query),
@@ -46,7 +47,15 @@ const models = {
   FeedInventory: createMockModel([{ _id: 'feed1', feedType: 'Hay', stockKg: 20, lowStockThresholdKg: 50, costPerKg: 10 }]),
   FeedConsumption: createMockModel([{ _id: 'cons1', feedId: 'feed1', quantityKg: 5 }]),
   Task: createMockModel([{ _id: 'task1', title: 'Milk pen A', assignedTo: 'user1', dueDate: new Date('2026-01-10'), status: 'pending' }]),
+  FormTemplate: createMockModel([{ _id: 'template1', name: 'Morning Milk Collection', category: 'milk', isActive: true, fields: [] }]),
+  FormSubmission: createMockModel([{ _id: 'submission1', templateId: 'template1', templateName: 'Morning Milk Collection', category: 'milk', status: 'submitted' }]),
+  DailyReport: createMockModel([{ _id: 'report1', reportDate: new Date('2026-01-10'), activitiesCompleted: 'Checked herd' }]),
 };
+
+models.FormTemplate.countDocuments = jest.fn(() => Promise.resolve(0));
+models.FormTemplate.insertMany = jest.fn(() => Promise.resolve([]));
+models.FormSubmission.countDocuments = jest.fn(() => Promise.resolve(0));
+models.FormSubmission.aggregate = jest.fn(() => Promise.resolve([{ _id: 'submitted', count: 2 }]));
 
 jest.unstable_mockModule('../src/models.js', () => models);
 jest.unstable_mockModule('../src/middleware.js', () => ({
@@ -67,6 +76,8 @@ jest.unstable_mockModule('../src/middleware.js', () => ({
 }));
 
 const { router } = await import('../src/routes.js');
+const { formTemplatesRouter } = await import('../src/formTemplatesRoutes.js');
+const { formSubmissionsRouter } = await import('../src/formSubmissionsRoutes.js');
 
 function createApp() {
   const app = express();
@@ -77,6 +88,11 @@ function createApp() {
 }
 
 const app = createApp();
+const formsApp = express();
+formsApp.use(express.json());
+formsApp.use('/api/form-templates', formTemplatesRouter);
+formsApp.use('/api/form-submissions', formSubmissionsRouter);
+formsApp.use((err, _req, res, _next) => res.status(500).json({ message: err.message }));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -162,5 +178,33 @@ describe('task endpoints', () => {
     await request(app).post('/api/tasks').set('x-role', 'worker').send({}).expect(403, { error: 'Insufficient permissions' });
     await request(app).post('/api/tasks').send({ title: 'Feed calves', assignedTo: 'user1', dueDate: '2026-01-10' }).expect(201);
     await request(app).delete('/api/tasks/task1').set('x-role', 'manager').expect(200, { ok: true });
+  });
+});
+
+describe('field form endpoints', () => {
+  test('lists templates and protects template writes', async () => {
+    await request(formsApp).get('/api/form-templates').set('x-role', 'worker').expect(200);
+    await request(formsApp).post('/api/form-templates').set('x-role', 'worker').send({}).expect(403, {
+      error: 'Insufficient permissions',
+    });
+  });
+
+  test('creates submitted form submissions and validates stats access', async () => {
+    models.FormTemplate.findOne.mockImplementationOnce(() =>
+      queryResult({
+        _id: 'template1',
+        name: 'Morning Milk Collection',
+        category: 'milk',
+        fields: [{ fieldId: 'cowTagNumber', label: 'Cow tag number', type: 'text', required: true }],
+      }),
+    );
+    await request(formsApp)
+      .post('/api/form-submissions')
+      .send({ templateId: 'template1', status: 'submitted', farmData: { cowTagNumber: 'DTP-001' } })
+      .expect(201);
+
+    const stats = await request(formsApp).get('/api/form-submissions/stats').expect(200);
+    expect(stats.body.submitted).toBe(2);
+    await request(formsApp).get('/api/form-submissions/stats').set('x-role', 'worker').expect(403, { error: 'Insufficient permissions' });
   });
 });

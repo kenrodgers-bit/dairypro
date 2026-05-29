@@ -1,0 +1,246 @@
+.print-root {
+  background: #fff;
+  color: #000;
+  min-height: 100vh;
+}
+
+.print-toolbar {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 auto 20px;
+  max-width: 210mm;
+  padding: 14px;
+}
+
+.print-toolbar label {
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 4px;
+}
+
+.print-toolbar input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.print-toolbar-check {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.print-toolbar button {
+  background: #059669;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 9px 14px;
+}
+
+.printable-form {
+  background: #fff;
+  border: 1px dashed #94a3b8;
+  box-sizing: border-box;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 11pt;
+  line-height: 1.35;
+  margin: 0 auto 18px;
+  max-width: 210mm;
+  padding: 12mm;
+}
+
+.page-break-label {
+  color: #64748b;
+  font-size: 12px;
+  margin: -10px auto 18px;
+  max-width: 210mm;
+  text-align: center;
+}
+
+.paper-header,
+.paper-footer,
+.paper-field {
+  border: 1px solid #000;
+  margin-bottom: 10px;
+  padding: 8px;
+  page-break-inside: avoid;
+}
+
+.paper-header-row,
+.paper-field-label,
+.paper-signatures {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paper-header h1,
+.reference-sheet h1 {
+  font-size: 16pt;
+  margin: 0;
+}
+
+.paper-header p,
+.paper-footer p,
+.paper-field p {
+  margin: 4px 0;
+}
+
+.paper-category {
+  font-weight: 800;
+  text-align: right;
+}
+
+.paper-header-body {
+  border-top: 1px solid #000;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+.paper-help {
+  font-size: 9pt;
+  font-style: italic;
+}
+
+.paper-option-grid {
+  display: grid;
+  gap: 6px 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+}
+
+.paper-radio,
+.paper-checkbox {
+  border: 1pt solid #000;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
+.paper-radio {
+  border-radius: 50%;
+}
+
+.paper-photo-box {
+  align-items: center;
+  border: 1px solid #000;
+  display: flex;
+  height: 4cm;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.paper-footer-small {
+  font-size: 9pt;
+}
+
+.reference-sheet table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.reference-sheet th,
+.reference-sheet td {
+  border-bottom: 1px solid #000;
+  padding: 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.reference-instructions {
+  border-top: 1px solid #000;
+  font-weight: 700;
+  margin-top: 16px;
+  padding-top: 8px;
+}
+
+.print-loading,
+.print-error {
+  margin: 40px auto;
+  max-width: 760px;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  body,
+  html {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body * {
+    box-shadow: none !important;
+    color: #000 !important;
+    text-decoration: none !important;
+    visibility: hidden !important;
+  }
+
+  .print-root,
+  .print-root * {
+    visibility: visible !important;
+  }
+
+  .print-root {
+    background: #fff !important;
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 100%;
+  }
+
+  .screen-only,
+  .screen-only * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .printable-form {
+    border: 0;
+    margin: 0;
+    max-width: none;
+    padding: 0;
+    page-break-after: always;
+    width: 100%;
+  }
+
+  .printable-form.last-copy {
+    page-break-after: auto;
+  }
+
+  .paper-header,
+  .paper-footer,
+  .paper-field {
+    border: 0.5pt solid #000;
+    border-radius: 0 !important;
+  }
+
+  .paper-field {
+    page-break-inside: avoid;
+  }
+
+  .paper-radio {
+    border: 1pt solid #000;
+    border-radius: 50% !important;
+  }
+
+  .paper-checkbox {
+    border: 1pt solid #000;
+    border-radius: 0 !important;
+  }
+
+  a[href]::after {
+    content: '' !important;
+  }
+}

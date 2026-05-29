@@ -10,5 +10,5 @@ export async function auth(req, res, next) {
   catch { return res.status(401).json({ message: 'Session expired. Please login again.' }); }
 }
 export function permit(...roles) { return (req, res, next) => roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'Insufficient permissions' }); }
-export function errorHandler(err, req, res, next) { console.error(err); res.status(err.status || 500).json({ message: err.message || 'Server error' }); }
+export function errorHandler(err, req, res, next) { console.error(err); const message = err.message || 'Server error'; res.status(err.status || 500).json({ error: message, message }); }
 export const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);

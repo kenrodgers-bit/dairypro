@@ -8,6 +8,8 @@ const ref = (modelName, extra = {}) => ({ type: Schema.Types.ObjectId, ref: mode
 const text = (extra = {}) => ({ type: String, trim: true, maxlength: 200, ...extra });
 const amount = (extra = {}) => ({ type: Number, min: 0, ...extra });
 const litres = (extra = {}) => ({ type: Number, min: 0, max: 200, ...extra });
+const fieldCategories = ['milk', 'health', 'feed', 'expense', 'calving', 'vaccination', 'general'];
+const fieldTypes = ['text', 'number', 'date', 'time', 'select', 'multiselect', 'boolean', 'photo', 'textarea'];
 
 function applyStringDefaults(schema) {
   schema.eachPath((_, path) => {
@@ -236,4 +238,83 @@ export const Task = createModel('Task', {
   relatedCowId: ref('Cow'),
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium', trim: true, maxlength: 200 },
   completedAt: Date,
+});
+
+const formFieldSchema = new Schema(
+  {
+    fieldId: text({ required: true }),
+    label: text({ required: true }),
+    type: { type: String, enum: fieldTypes, required: true, trim: true, maxlength: 200 },
+    required: { type: Boolean, default: false },
+    options: [{ type: String, trim: true, maxlength: 200 }],
+    unit: text(),
+    min: Number,
+    max: Number,
+    placeholder: text(),
+    helpText: text(),
+    order: amount({ default: 0 }),
+  },
+  { _id: false },
+);
+
+const printHistorySchema = new Schema(
+  {
+    printedBy: ref('User'),
+    printedAt: { type: Date, default: Date.now },
+    copies: amount({ default: 1 }),
+    notes: text(),
+  },
+  { _id: false },
+);
+
+export const FormTemplate = createModel('FormTemplate', {
+  name: text({ required: true }),
+  description: text(),
+  category: { type: String, enum: fieldCategories, required: true, trim: true, maxlength: 200 },
+  fields: [formFieldSchema],
+  isActive: { type: Boolean, default: true },
+  createdBy: ref('User'),
+  farmId: ref('Farm', { required: true, index: true }),
+  printHistory: [printHistorySchema],
+});
+
+export const FormSubmission = createModel('FormSubmission', {
+  templateId: ref('FormTemplate', { required: true, index: true }),
+  templateName: text({ required: true }),
+  category: { type: String, enum: fieldCategories, required: true, trim: true, maxlength: 200 },
+  submittedBy: ref('User', { required: true, index: true }),
+  farmId: ref('Farm', { required: true, index: true }),
+  farmData: { type: Schema.Types.Mixed, default: {} },
+  status: {
+    type: String,
+    enum: ['draft', 'submitted', 'approved', 'rejected', 'transferred'],
+    default: 'draft',
+    trim: true,
+    maxlength: 200,
+    index: true,
+  },
+  workerNotes: text(),
+  reviewedBy: ref('User'),
+  reviewedAt: Date,
+  reviewNotes: text(),
+  transferredBy: ref('User'),
+  transferredAt: Date,
+  transferredRecordId: text(),
+  transferredCollection: text(),
+  isOfflineDraft: { type: Boolean, default: false },
+  isManualEntry: { type: Boolean, default: false },
+  deviceInfo: text(),
+});
+
+export const DailyReport = createModel('DailyReport', {
+  farmId: ref('Farm', { required: true, index: true }),
+  reportDate: { type: Date, required: true, index: true },
+  reportingWorker: text(),
+  activitiesCompleted: text({ required: true }),
+  animalsChecked: amount(),
+  issuesObserved: text(),
+  weatherConditions: text(),
+  additionalNotes: text(),
+  submissionId: ref('FormSubmission'),
+  submittedBy: ref('User'),
 });

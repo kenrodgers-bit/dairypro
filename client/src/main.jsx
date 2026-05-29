@@ -25,9 +25,15 @@ import ConfirmModal from './components/ConfirmModal';
 import DatePicker from './components/DatePicker';
 import EmptyState from './components/EmptyState';
 import Toast from './components/Toast';
+import OfflineDraftSync from './components/OfflineDraftSync';
 import FeedInventoryPage from './pages/FeedInventoryPage';
 import FinancialReportPage from './pages/FinancialReportPage';
+import FillFormPage from './pages/FillFormPage';
+import FormsPage from './pages/FormsPage';
 import MilkQualityPage from './pages/MilkQualityPage';
+import ManageTemplatesPage from './pages/ManageTemplatesPage';
+import PrintFormPage from './pages/PrintFormPage';
+import ReviewSubmissionPage from './pages/ReviewSubmissionPage';
 import TasksPage from './pages/TasksPage';
 import VaccinationsPage from './pages/VaccinationsPage';
 import './index.css';
@@ -39,6 +45,7 @@ const nav = [
   { to: '/health', label: 'Health', icon: HeartPulse, roles: ['owner', 'manager', 'worker'] },
   { to: '/pregnancy', label: 'Pregnancy', icon: Sprout, roles: ['owner', 'manager'] },
   { to: '/feed', label: 'Feed', icon: Package, roles: ['owner', 'manager'] },
+  { to: '/forms', label: 'Field forms', icon: ClipboardList, roles: ['owner', 'manager', 'worker'], badge: 'forms' },
   { to: '/feed-inventory', label: 'Feed Inventory', icon: Package, roles: ['owner', 'manager'] },
   { to: '/vaccinations', label: 'Vaccinations', icon: Bell, roles: ['owner', 'manager'] },
   { to: '/milk-quality', label: 'Milk Quality', icon: HeartPulse, roles: ['owner', 'manager'] },
@@ -159,11 +166,24 @@ function useData(path) {
 
 function Layout({ children, user }) {
   const navigate = useNavigate();
+  const [pendingForms, setPendingForms] = useState(0);
 
   const logout = () => {
     localStorage.removeItem('dt_token');
     navigate('/login');
   };
+
+  useEffect(() => {
+    if (!canUse(user, ['owner', 'manager'])) return undefined;
+    let active = true;
+    api
+      .get('/form-submissions/stats')
+      .then((response) => active && setPendingForms(response.data?.submitted || 0))
+      .catch(() => active && setPendingForms(0));
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
 
   return (
     <div className="min-h-screen flex">
@@ -176,7 +196,7 @@ function Layout({ children, user }) {
           </div>
         </div>
         <nav className="space-y-1">
-          {nav.filter((item) => canUse(user, item.roles)).map(({ to, label, icon: Icon }) => (
+          {nav.filter((item) => canUse(user, item.roles)).map(({ to, label, icon: Icon, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -188,6 +208,7 @@ function Layout({ children, user }) {
             >
               <Icon size={18} />
               {label}
+              {badge === 'forms' && pendingForms > 0 && <span className="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" />}
             </NavLink>
           ))}
         </nav>
@@ -206,11 +227,18 @@ function Layout({ children, user }) {
             <p className="text-sm text-slate-500">Installable farm records system for desktop and web</p>
           </div>
           <div className="flex items-center gap-3">
+            {canUse(user, ['owner', 'manager']) && pendingForms > 0 && (
+              <button className="btn-soft" onClick={() => navigate('/forms?tab=pending')}>
+                Pending review
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-black text-white">{pendingForms}</span>
+              </button>
+            )}
             <InstallAppButton className="hidden sm:inline-flex" />
             <ShieldCheck className="text-emerald-600" />
           </div>
         </header>
         <OfflineNotice />
+        <OfflineDraftSync />
         <div className="p-4 lg:p-8">{children}</div>
       </main>
     </div>
@@ -361,6 +389,8 @@ function Login() {
 }
 
 function Dashboard() {
+  const user = useCurrentUser();
+  const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState('');
 
@@ -381,6 +411,7 @@ function Dashboard() {
   if (!summary) return <div>Loading dashboard...</div>;
 
   const s = summary.stats;
+  const formCount = user?.role === 'worker' ? summary.forms?.drafts || 0 : summary.forms?.pendingReview || 0;
   const cards = [
     ['Active Cows', s.totalCows, Beef],
     ['Today Milk', litres(s.todayMilk), Milk],
@@ -390,13 +421,19 @@ function Dashboard() {
     ['Profit', money(s.profit), ShieldCheck],
     ['Pregnant', s.pregnant, Sprout],
     ['Low Feed', s.lowFeed, Bell],
+    [
+      user?.role === 'worker' ? 'Fill a form' : 'Review submissions',
+      formCount,
+      ClipboardList,
+      () => navigate(user?.role === 'worker' ? '/forms' : '/forms?tab=pending'),
+    ],
   ];
 
   return (
     <>
       <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        {cards.map(([title, value, Icon]) => (
-          <div className="card" key={title}>
+        {cards.map(([title, value, Icon, onClick]) => (
+          <div className={`card ${onClick ? 'cursor-pointer hover:shadow-md' : ''}`} key={title} onClick={onClick}>
             <div className="flex justify-between">
               <p className="text-slate-500 font-semibold">{title}</p>
               <Icon className="text-emerald-600" />
@@ -458,6 +495,18 @@ function Dashboard() {
             !summary.reminders?.length && (
               <EmptyState title="No alerts" description="Everything that needs attention will appear here." />
             )}
+          <h3 className="font-black mb-3 mt-5">Recent field forms</h3>
+          {summary.forms?.recentSubmissions?.map((submission) => (
+            <button
+              key={submission._id}
+              className="mb-2 block w-full rounded-xl bg-slate-50 p-3 text-left text-sm"
+              onClick={() => navigate(submission.status === 'submitted' ? `/forms/review/${submission._id}` : '/forms')}
+            >
+              <b>{submission.templateName}</b>
+              <span className="ml-2 text-slate-500">{submission.status}</span>
+            </button>
+          ))}
+          {!summary.forms?.recentSubmissions?.length && <p className="text-sm text-slate-500">No recent field form activity.</p>}
         </div>
       </div>
     </>
@@ -840,6 +889,14 @@ function Reports() {
   );
 }
 
+function RoleGate({ roles, children }) {
+  const user = useCurrentUser();
+  if (!canUse(user, roles)) {
+    return <div className="card text-red-700">Insufficient permissions</div>;
+  }
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -876,7 +933,7 @@ function App() {
               <ListPage
                 path="/milk"
                 title="Milk Records"
-                writeRoles={['owner', 'manager', 'worker']}
+                writeRoles={['owner', 'manager']}
                 cols={[
                   ['cow', 'Cow', (row) => row.cow?.name],
                   ['date', 'Date', (row) => new Date(row.date).toLocaleDateString()],
@@ -966,6 +1023,50 @@ function App() {
                   { name: 'unit', label: 'Unit' },
                 ]}
               />
+            </Protected>
+          }
+        />
+        <Route
+          path="/forms"
+          element={
+            <Protected>
+              <FormsPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/forms/fill/:templateId"
+          element={
+            <Protected>
+              <FillFormPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/forms/review/:submissionId"
+          element={
+            <Protected>
+              <ReviewSubmissionPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/forms/templates"
+          element={
+            <Protected>
+              <RoleGate roles={['owner', 'manager']}>
+                <ManageTemplatesPage />
+              </RoleGate>
+            </Protected>
+          }
+        />
+        <Route
+          path="/forms/print/:templateId"
+          element={
+            <Protected>
+              <RoleGate roles={['owner', 'manager']}>
+                <PrintFormPage />
+              </RoleGate>
             </Protected>
           }
         />

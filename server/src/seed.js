@@ -1,5 +1,6 @@
 import dotenv from 'dotenv'; import mongoose from 'mongoose'; import bcrypt from 'bcryptjs';
-import { Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder } from './models.js';
+import { Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder, FormTemplate } from './models.js';
+import { buildDefaultFormTemplates } from './defaultFormTemplates.js';
 dotenv.config();
 if (process.env.NODE_ENV === 'production') {
   console.error('Refusing to run seed in production. This script deletes data.');
@@ -13,13 +14,16 @@ if (!process.argv.includes('--force')) {
 if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required before running the seed script.');
 const d = (days) => new Date(Date.now() - days*86400000);
 await mongoose.connect(process.env.MONGO_URI, { dbName: process.env.MONGO_DB_NAME || 'dairytrack_pro' });
-for (const [name, Model] of Object.entries({ Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder })) {
+for (const [name, Model] of Object.entries({ Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder, FormTemplate })) {
   console.warn(`WARNING: wiping ${name} collection before seeding.`);
   await Model.deleteMany({});
 }
 const farm = await Farm.create({ name:'Greenfield Dairy Farm', ownerName:'Ken Rodgers', phone:'+254700000000', location:'Nairobi, Kenya', defaultMilkPrice:50 });
 const hash = await bcrypt.hash('password123',12);
-await User.insertMany([{ name:'Owner', email:'owner@dairytrack.com', passwordHash:hash, role:'owner', farm:farm._id },{ name:'Manager', email:'manager@dairytrack.com', passwordHash:hash, role:'manager', farm:farm._id },{ name:'Worker', email:'worker@dairytrack.com', passwordHash:hash, role:'worker', farm:farm._id }]);
+const users = await User.insertMany([{ name:'Owner', email:'owner@dairytrack.com', passwordHash:hash, role:'owner', farm:farm._id },{ name:'Manager', email:'manager@dairytrack.com', passwordHash:hash, role:'manager', farm:farm._id },{ name:'Worker', email:'worker@dairytrack.com', passwordHash:hash, role:'worker', farm:farm._id }]);
+if (await FormTemplate.countDocuments({}) === 0) {
+  await FormTemplate.insertMany(buildDefaultFormTemplates({ farmId: farm._id, createdBy: users[0]._id }));
+}
 const names = [['Bella','DT-001','Friesian','milking'],['Nala','DT-002','Ayrshire','pregnant'],['Malaika','DT-003','Jersey Cross','milking'],['Zuri','DT-004','Guernsey','sick'],['Amani','DT-005','Fleckvieh','dry'],['Kito','DT-006','Friesian Cross','milking'],['Lulu','DT-007','Local Cross','heifer'],['Tamu','DT-008','Jersey','sold']];
 const cows = await Cow.insertMany(names.map((n,i)=>({ farm:farm._id, name:n[0], tagNumber:n[1], breed:n[2], status:n[3], dateOfBirth:d(365*(3+i%5)), purchasePrice:60000+i*5000, color:i%2?'Brown':'Black & white' })));
 let milks=[]; for (let day=0; day<35; day++) for (const c of cows.slice(0,6)) if(c.status!=='sold') milks.push({ farm:farm._id, cow:c._id, date:d(day), morningLitres:5+Math.random()*7, eveningLitres:4+Math.random()*6, milkSold:8+Math.random()*7, pricePerLitre:50 });
