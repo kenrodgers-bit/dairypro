@@ -17,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(__dirname, '../../client/dist');
 const origins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim());
 const requiredEnv = ['MONGO_URI', 'JWT_SECRET'];
+const authRateLimitMessage = { error: 'Too many attempts, try again later' };
 
 let mongoPromise;
 
@@ -56,6 +57,8 @@ app.use(cors({ origin: origins, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('tiny'));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+app.use('/api/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: authRateLimitMessage }));
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: authRateLimitMessage }));
 app.get('/health', (_, res) => res.json({ ok: true, name: 'DairyTrack Pro API' }));
 app.use('/api', ensureDatabase, router);
 

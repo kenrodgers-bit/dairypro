@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -21,19 +21,37 @@ import {
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, litres, money } from './api';
+import ConfirmModal from './components/ConfirmModal';
+import DatePicker from './components/DatePicker';
+import EmptyState from './components/EmptyState';
+import Toast from './components/Toast';
+import FeedInventoryPage from './pages/FeedInventoryPage';
+import FinancialReportPage from './pages/FinancialReportPage';
+import MilkQualityPage from './pages/MilkQualityPage';
+import TasksPage from './pages/TasksPage';
+import VaccinationsPage from './pages/VaccinationsPage';
 import './index.css';
 
 const nav = [
-  ['/', 'Dashboard', BarChart3],
-  ['/cows', 'Cows', Beef],
-  ['/milk', 'Milk', Milk],
-  ['/health', 'Health', HeartPulse],
-  ['/pregnancy', 'Pregnancy', Sprout],
-  ['/feed', 'Feed', Package],
-  ['/expenses', 'Expenses', DollarSign],
-  ['/sales', 'Sales', ClipboardList],
-  ['/reports', 'Reports', FileDown],
+  { to: '/', label: 'Dashboard', icon: BarChart3, roles: ['owner', 'manager'] },
+  { to: '/cows', label: 'Cows', icon: Beef, roles: ['owner', 'manager'] },
+  { to: '/milk', label: 'Milk', icon: Milk, roles: ['owner', 'manager', 'worker'] },
+  { to: '/health', label: 'Health', icon: HeartPulse, roles: ['owner', 'manager', 'worker'] },
+  { to: '/pregnancy', label: 'Pregnancy', icon: Sprout, roles: ['owner', 'manager'] },
+  { to: '/feed', label: 'Feed', icon: Package, roles: ['owner', 'manager'] },
+  { to: '/feed-inventory', label: 'Feed Inventory', icon: Package, roles: ['owner', 'manager'] },
+  { to: '/vaccinations', label: 'Vaccinations', icon: Bell, roles: ['owner', 'manager'] },
+  { to: '/milk-quality', label: 'Milk Quality', icon: HeartPulse, roles: ['owner', 'manager'] },
+  { to: '/tasks', label: 'Tasks', icon: ClipboardList, roles: ['owner', 'manager', 'worker'] },
+  { to: '/expenses', label: 'Expenses', icon: DollarSign, roles: ['owner', 'manager'] },
+  { to: '/sales', label: 'Sales', icon: ClipboardList, roles: ['owner', 'manager'] },
+  { to: '/reports', label: 'Reports', icon: FileDown, roles: ['owner', 'manager'] },
+  { to: '/reports/financial', label: 'Financial P&L', icon: BarChart3, roles: ['owner', 'manager'] },
 ];
+
+const UserContext = createContext(null);
+const canUse = (user, roles) => !roles || roles.includes(user?.role);
+const useCurrentUser = () => useContext(UserContext);
 
 function getApiError(error) {
   if (!error.response) return 'Cannot reach the API. Start the local server and MongoDB, or check VITE_API_URL.';
@@ -139,7 +157,7 @@ function useData(path) {
   return { data, setData, loading, error, load };
 }
 
-function Layout({ children }) {
+function Layout({ children, user }) {
   const navigate = useNavigate();
 
   const logout = () => {
@@ -158,7 +176,7 @@ function Layout({ children }) {
           </div>
         </div>
         <nav className="space-y-1">
-          {nav.map(([to, label, Icon]) => (
+          {nav.filter((item) => canUse(user, item.roles)).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -200,6 +218,7 @@ function Layout({ children }) {
 }
 
 function Protected({ children }) {
+  const [user, setUser] = useState(null);
   const [ok, setOk] = useState(null);
 
   useEffect(() => {
@@ -207,12 +226,19 @@ function Protected({ children }) {
 
     api
       .get('/auth/me')
-      .then((response) => active && setOk(Boolean(response.data?._id)))
+      .then((response) => {
+        if (!active) return;
+        setUser(response.data);
+        setOk(Boolean(response.data?._id));
+      })
       .catch((error) => {
         const hasToken = Boolean(localStorage.getItem('dt_token'));
         const offline = !navigator.onLine || error.response?.status === 503;
 
-        if (active) setOk(offline && hasToken);
+        if (active) {
+          setUser(hasToken && offline ? { role: 'owner' } : null);
+          setOk(offline && hasToken);
+        }
       });
 
     return () => {
@@ -222,7 +248,13 @@ function Protected({ children }) {
 
   if (ok === null) return <div className="p-10">Loading...</div>;
 
-  return ok ? <Layout>{children}</Layout> : <Login />;
+  return ok ? (
+    <UserContext.Provider value={user}>
+      <Layout user={user}>{children}</Layout>
+    </UserContext.Provider>
+  ) : (
+    <Login />
+  );
 }
 
 function Login() {
@@ -388,16 +420,44 @@ function Dashboard() {
         </div>
         <div className="card">
           <h3 className="font-black mb-4">Alerts</h3>
-          {summary.lowFeed.map((feed) => (
+          {summary.vaccinationsDue?.map((record) => (
+            <div key={record._id} className="p-3 rounded-xl bg-sky-50 text-sky-800 mb-2">
+              Vaccine due: {record.cowId?.name || 'Cow'} ({record.vaccineType})
+            </div>
+          ))}
+          {summary.highScc?.map((record) => (
+            <div key={record._id} className="p-3 rounded-xl bg-red-50 text-red-800 mb-2">
+              High SCC: {record.cowId?.name || 'Cow'} ({Number(record.scc || 0).toLocaleString()})
+            </div>
+          ))}
+          {summary.lowInventory?.map((feed) => (
+            <div key={feed._id} className="p-3 rounded-xl bg-amber-50 text-amber-800 mb-2">
+              Low stock: {feed.feedType} ({feed.stockKg} kg)
+            </div>
+          ))}
+          {summary.lowFeed?.map((feed) => (
             <div key={feed._id} className="p-3 rounded-xl bg-amber-50 text-amber-800 mb-2">
               Low stock: {feed.name} ({feed.currentStock} {feed.unit})
             </div>
           ))}
-          {summary.reminders.map((reminder) => (
+          {summary.overdueTasks?.map((task) => (
+            <div key={task._id} className="p-3 rounded-xl bg-orange-50 text-orange-800 mb-2">
+              Overdue task: {task.title}
+            </div>
+          ))}
+          {summary.reminders?.map((reminder) => (
             <div key={reminder._id} className="p-3 rounded-xl bg-slate-50 mb-2">
               {reminder.title}
             </div>
           ))}
+          {!summary.vaccinationsDue?.length &&
+            !summary.highScc?.length &&
+            !summary.lowInventory?.length &&
+            !summary.lowFeed?.length &&
+            !summary.overdueTasks?.length &&
+            !summary.reminders?.length && (
+              <EmptyState title="No alerts" description="Everything that needs attention will appear here." />
+            )}
         </div>
       </div>
     </>
@@ -420,7 +480,16 @@ function FormModal({ title, fields, onSave, onClose }) {
           {fields.map((field) => (
             <label key={field.name}>
               <span className="label">{field.label}</span>
-              <input className="input" type={field.type || 'text'} onChange={(event) => updateField(field, event.target.value)} />
+              {field.type === 'date' ? (
+                <DatePicker value={form[field.name]} onChange={(value) => updateField(field, value)} />
+              ) : (
+                <input
+                  className="input"
+                  type={field.type || 'text'}
+                  value={form[field.name] ?? ''}
+                  onChange={(event) => updateField(field, event.target.value)}
+                />
+              )}
             </label>
           ))}
         </div>
@@ -437,17 +506,33 @@ function FormModal({ title, fields, onSave, onClose }) {
   );
 }
 
-function ListPage({ path, title, cols, fields }) {
+function ListPage({ path, title, cols, fields, writeRoles = ['owner', 'manager'], deleteRoles = ['owner'], emptyMessage }) {
   const { data, loading, error, load } = useData(path);
+  const user = useCurrentUser();
   const [show, setShow] = useState(false);
   const [q, setQ] = useState('');
+  const [deleting, setDeleting] = useState(null);
+  const [toast, setToast] = useState('');
 
   const filtered = data.filter((item) => JSON.stringify(item).toLowerCase().includes(q.toLowerCase()));
+  const canWrite = canUse(user, writeRoles);
+  const canDelete = canUse(user, deleteRoles);
 
   async function save(form) {
     await api.post(path, form);
     setShow(false);
     load();
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    try {
+      await api.delete(`${path}/${deleting._id}`);
+      setDeleting(null);
+      load();
+    } catch {
+      setToast('Delete failed, please try again');
+    }
   }
 
   return (
@@ -457,10 +542,12 @@ function ListPage({ path, title, cols, fields }) {
           <h1 className="text-3xl font-black">{title}</h1>
           <p className="text-slate-500">Manage {title.toLowerCase()} with live farm records.</p>
         </div>
-        <button onClick={() => setShow(true)} className="btn-primary">
-          <Plus size={18} />
-          Add
-        </button>
+        {canWrite && (
+          <button onClick={() => setShow(true)} className="btn-primary">
+            <Plus size={18} />
+            Add
+          </button>
+        )}
       </div>
       <div className="card mb-4 flex gap-2">
         <Search className="text-slate-400" />
@@ -479,7 +566,7 @@ function ListPage({ path, title, cols, fields }) {
                     {col[1]}
                   </th>
                 ))}
-                <th></th>
+                {canDelete && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -490,32 +577,65 @@ function ListPage({ path, title, cols, fields }) {
                       {col[2] ? col[2](row) : String(row[col[0]] ?? '')}
                     </td>
                   ))}
-                  <td className="p-3">
-                    <button onClick={() => api.delete(`${path}/${row._id}`).then(load)} className="text-red-600">
-                      Delete
-                    </button>
-                  </td>
+                  {canDelete && (
+                    <td className="p-3">
+                      <button onClick={() => setDeleting(row)} className="text-red-600">
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-          {!filtered.length && <p className="text-center py-10 text-slate-500">No records yet.</p>}
+          {!filtered.length && (
+            <EmptyState
+              icon=""
+              title={emptyMessage || `No ${title.toLowerCase()} yet`}
+              description="Records will appear here once they are added."
+              actionLabel={canWrite ? 'Add record' : undefined}
+              onAction={canWrite ? () => setShow(true) : undefined}
+            />
+          )}
         </div>
       )}
       {show && <FormModal title={`Add ${title}`} fields={fields} onClose={() => setShow(false)} onSave={save} />}
+      <ConfirmModal
+        isOpen={Boolean(deleting)}
+        title={`Delete ${title}`}
+        message="This action cannot be undone."
+        onCancel={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+      />
+      <Toast message={toast} onClose={() => setToast('')} />
     </>
   );
 }
 
 function Cows() {
-  const { data, load } = useData('/cows');
+  const { data, load, loading, error } = useData('/cows');
   const navigate = useNavigate();
+  const user = useCurrentUser();
   const [show, setShow] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [toast, setToast] = useState('');
+  const canWrite = canUse(user, ['owner', 'manager']);
 
   async function save(form) {
     await api.post('/cows', form);
     setShow(false);
     load();
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    try {
+      await api.delete(`/cows/${deleting._id}`);
+      setDeleting(null);
+      load();
+    } catch {
+      setToast('Delete failed, please try again');
+    }
   }
 
   return (
@@ -525,13 +645,19 @@ function Cows() {
           <h1 className="text-3xl font-black">Cows</h1>
           <p className="text-slate-500">Cow profiles with sale status and value scoring.</p>
         </div>
-        <button className="btn-primary" onClick={() => setShow(true)}>
-          <Plus />
-          Add Cow
-        </button>
+        {canWrite && (
+          <button className="btn-primary" onClick={() => setShow(true)}>
+            <Plus />
+            Add Cow
+          </button>
+        )}
       </div>
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {data.map((cow) => (
+      {error && <div className="card text-red-700">{error}</div>}
+      {loading ? (
+        <div>Loading cows...</div>
+      ) : data.length ? (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {data.map((cow) => (
           <div className="card cursor-pointer hover:shadow-md" onClick={() => navigate(`/cows/${cow._id}`)} key={cow._id}>
             <div className="flex justify-between">
               <div>
@@ -545,9 +671,30 @@ function Cows() {
             <p className="mt-4 text-sm text-slate-600">
               {cow.notes || 'Open profile to view milk, health, pregnancy and Cow Value Score.'}
             </p>
+            {canWrite && (
+              <button
+                type="button"
+                className="mt-4 text-sm font-semibold text-red-600"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDeleting(cow);
+                }}
+              >
+                Delete
+              </button>
+            )}
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon=""
+          title="No cows yet - add your first cow to get started"
+          description="Cow profiles will appear here with tags, breed details, status, and notes."
+          actionLabel={canWrite ? 'Add Cow' : undefined}
+          onAction={canWrite ? () => setShow(true) : undefined}
+        />
+      )}
       {show && (
         <FormModal
           title="Add Cow"
@@ -562,6 +709,14 @@ function Cows() {
           onSave={save}
         />
       )}
+      <ConfirmModal
+        isOpen={Boolean(deleting)}
+        title="Delete cow record"
+        message="This cow will be archived with a soft delete and hidden from normal lists."
+        onCancel={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+      />
+      <Toast message={toast} onClose={() => setToast('')} />
     </>
   );
 }
@@ -648,28 +803,39 @@ function CowProfile() {
 }
 
 function Reports() {
-  async function downloadCsv() {
-    const response = await api.get('/reports/export/cows', { responseType: 'blob' });
-    const url = URL.createObjectURL(response.data);
-    const anchor = document.createElement('a');
+  const [downloading, setDownloading] = useState(false);
+  const [toast, setToast] = useState('');
 
-    anchor.href = url;
-    anchor.download = 'dairytrack-cows.csv';
-    anchor.click();
-    URL.revokeObjectURL(url);
+  async function downloadCsv() {
+    setDownloading(true);
+    try {
+      const response = await api.get('/reports/export/cows', { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement('a');
+
+      anchor.href = url;
+      anchor.download = 'dairytrack-cows.csv';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setToast('Export failed, please try again');
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
     <div className="card">
       <h1 className="text-3xl font-black">Reports</h1>
       <p className="text-slate-500 mb-5">Export farm records as CSV, and use browser print for investor PDF previews.</p>
-      <button className="btn-primary" onClick={downloadCsv}>
+      <button className="btn-primary" onClick={downloadCsv} disabled={downloading}>
         <FileDown />
-        Export Cows CSV
+        {downloading ? 'Exporting...' : 'Export Cows CSV'}
       </button>
       <button className="btn-soft ml-2" onClick={() => window.print()}>
         Print Report View
       </button>
+      <Toast message={toast} onClose={() => setToast('')} />
     </div>
   );
 }
@@ -710,6 +876,7 @@ function App() {
               <ListPage
                 path="/milk"
                 title="Milk Records"
+                writeRoles={['owner', 'manager', 'worker']}
                 cols={[
                   ['cow', 'Cow', (row) => row.cow?.name],
                   ['date', 'Date', (row) => new Date(row.date).toLocaleDateString()],
@@ -724,6 +891,7 @@ function App() {
                   { name: 'eveningLitres', label: 'Evening L', type: 'number' },
                   { name: 'milkSold', label: 'Sold L', type: 'number' },
                 ]}
+                emptyMessage="No milk records this week"
               />
             </Protected>
           }
@@ -735,6 +903,7 @@ function App() {
               <ListPage
                 path="/health"
                 title="Health Records"
+                writeRoles={['owner', 'manager']}
                 cols={[
                   ['cow', 'Cow', (row) => row.cow?.name],
                   ['recordType', 'Type'],
@@ -747,6 +916,7 @@ function App() {
                   { name: 'diagnosis', label: 'Diagnosis' },
                   { name: 'treatmentCost', label: 'Cost', type: 'number' },
                 ]}
+                emptyMessage="No health records yet"
               />
             </Protected>
           }
@@ -796,6 +966,38 @@ function App() {
                   { name: 'unit', label: 'Unit' },
                 ]}
               />
+            </Protected>
+          }
+        />
+        <Route
+          path="/vaccinations"
+          element={
+            <Protected>
+              <VaccinationsPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/milk-quality"
+          element={
+            <Protected>
+              <MilkQualityPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/feed-inventory"
+          element={
+            <Protected>
+              <FeedInventoryPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/tasks"
+          element={
+            <Protected>
+              <TasksPage />
             </Protected>
           }
         />
@@ -850,6 +1052,14 @@ function App() {
           element={
             <Protected>
               <Reports />
+            </Protected>
+          }
+        />
+        <Route
+          path="/reports/financial"
+          element={
+            <Protected>
+              <FinancialReportPage />
             </Protected>
           }
         />

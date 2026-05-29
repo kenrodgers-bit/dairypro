@@ -1,10 +1,22 @@
 import dotenv from 'dotenv'; import mongoose from 'mongoose'; import bcrypt from 'bcryptjs';
 import { Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder } from './models.js';
 dotenv.config();
+if (process.env.NODE_ENV === 'production') {
+  console.error('Refusing to run seed in production. This script deletes data.');
+  process.exit(1);
+}
+if (!process.argv.includes('--force')) {
+  console.error('Refusing to run destructive seed without --force.');
+  console.error('Run: npm run seed -- --force');
+  process.exit(1);
+}
 if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required before running the seed script.');
 const d = (days) => new Date(Date.now() - days*86400000);
 await mongoose.connect(process.env.MONGO_URI, { dbName: process.env.MONGO_DB_NAME || 'dairytrack_pro' });
-await Promise.all([Farm.deleteMany({}),User.deleteMany({}),Cow.deleteMany({}),MilkRecord.deleteMany({}),HealthRecord.deleteMany({}),PregnancyRecord.deleteMany({}),FeedItem.deleteMany({}),Expense.deleteMany({}),SaleRecord.deleteMany({}),Reminder.deleteMany({})]);
+for (const [name, Model] of Object.entries({ Farm, User, Cow, MilkRecord, HealthRecord, PregnancyRecord, FeedItem, Expense, SaleRecord, Reminder })) {
+  console.warn(`WARNING: wiping ${name} collection before seeding.`);
+  await Model.deleteMany({});
+}
 const farm = await Farm.create({ name:'Greenfield Dairy Farm', ownerName:'Ken Rodgers', phone:'+254700000000', location:'Nairobi, Kenya', defaultMilkPrice:50 });
 const hash = await bcrypt.hash('password123',12);
 await User.insertMany([{ name:'Owner', email:'owner@dairytrack.com', passwordHash:hash, role:'owner', farm:farm._id },{ name:'Manager', email:'manager@dairytrack.com', passwordHash:hash, role:'manager', farm:farm._id },{ name:'Worker', email:'worker@dairytrack.com', passwordHash:hash, role:'worker', farm:farm._id }]);
